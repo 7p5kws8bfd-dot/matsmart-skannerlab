@@ -22,13 +22,13 @@ function startRotationAssist(myToken,hints){
  let index=0;
  const step=()=>{
    if(myToken!==token||!running)return;
-   rotationTimer=setTimeout(step,500);
+   rotationTimer=setTimeout(step,240);
    if(rotationBusy||video.readyState<2||!video.videoWidth||!video.videoHeight)return;
    rotationBusy=true;
    try{
-     const angle=[90,180,270][index++%3];
+     const angle=[90,270,90,270,180][index++%5];
      const w=video.videoWidth,h=video.videoHeight;
-     const scale=Math.min(1,850/Math.max(w,h));
+     const scale=Math.min(1,1100/Math.max(w,h));
      const sw=Math.max(1,Math.round(w*scale)),sh=Math.max(1,Math.round(h*scale));
      canvas.width=angle===180?sw:sh;
      canvas.height=angle===180?sh:sw;
@@ -48,17 +48,17 @@ function startRotationAssist(myToken,hints){
    }catch(e){if(rotationAttempts<2)addLog('Rotationsfel: '+(e.message||e))}
    finally{rotationBusy=false}
  };
- rotationTimer=setTimeout(step,350);
+ rotationTimer=setTimeout(step,180);
 }
 async function startCamera(){if(running)return;reset();running=true;const myToken=++token;startTime=performance.now();$('start').disabled=true;$('stop').disabled=false;status('Kontrollerar kameran…');addLog('Startar '+$('engine').value+' · '+navigator.userAgent);
 try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Kamera-API saknas. Öppna via HTTPS i Safari.');if($('engine').value==='native'){
  if(!('BarcodeDetector' in window))throw Error('BarcodeDetector stöds inte av den här webbläsaren. Välj ZXing.');const supported=await BarcodeDetector.getSupportedFormats();const formats=['ean_13','ean_8','upc_a','upc_e'].filter(f=>supported.includes(f));if(!formats.length)throw Error('Inga EAN/UPC-format stöds av BarcodeDetector.');const detector=new BarcodeDetector({formats});stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});if(myToken!==token){stream.getTracks().forEach(t=>t.stop());return}$('video').srcObject=stream;await $('video').play();addLog('Native stödda format: '+formats.join(', '));const loop=async()=>{if(myToken!==token||!running)return;tries++;$('attempts').textContent=String(tries);try{const results=await detector.detect($('video'));for(const r of results)onCandidate(r.rawValue,'native')}catch(e){if(tries===1)addLog('Native detect: '+e.message)}if(myToken===token&&running)interval=setTimeout(loop,180)};loop();
-}else{await loadZXing();if(myToken!==token)return;const hints=new Map();hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A]);reader=new ZXing.BrowserMultiFormatReader(hints,180);controls=await reader.decodeFromConstraints({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}},$('video'),(result,error)=>{if(myToken!==token||!running)return;tries++;$('attempts').textContent=String(tries);if(result)onCandidate(result.getText(),'ZXing');else if(error&&tries===1)addLog('Avkodning pågår: '+(error.name||'inget resultat'))});if(myToken!==token){try{controls.stop()}catch{}return}addLog('ZXing kameran startad');startRotationAssist(myToken,hints);}
+}else{await loadZXing();if(myToken!==token)return;const hints=new Map();hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A]);reader=new ZXing.BrowserMultiFormatReader(hints,180);controls=await reader.decodeFromConstraints({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}},$('video'),(result,error)=>{if(myToken!==token||!running)return;tries++;$('attempts').textContent=String(tries);if(result)onCandidate(result.getText(),'ZXing');else if(error&&tries===1)addLog('Avkodning pågår: '+(error.name||'inget resultat'))});if(myToken!==token){try{controls.stop()}catch{}return}addLog('ZXing kameran startad. Rotationsassistans testar hela kamerabilden, främst 90°/270°.');startRotationAssist(myToken,hints);}
 if(myToken===token&&running)status('Kameran är igång. Prova att vrida streckkoden i olika riktningar. Håll den skarp och synlig.');
 }catch(e){if(myToken===token){addLog('FEL: '+(e.message||e));stopCamera();status('Kunde inte starta: '+(e.message||e),'warn')}}}
 async function lookup(){const code=confirmed;if(!validEAN(code))return;const p=$('product');p.classList.remove('hidden');p.textContent='Söker produkt i Open Food Facts…';try{const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);let r;try{r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json?fields=product_name,product_name_sv,brands,quantity',{signal:ctl.signal})}finally{clearTimeout(timer)}if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json(),product=data.product||{},name=(product.product_name_sv||product.product_name||'').trim();p.textContent=name?'Produkt: '+name+'\nVarumärke: '+(product.brands||'–')+'\nMängd: '+(product.quantity||'–'):'Ingen produkt hittades i Open Food Facts för '+code+'. Du kan ändå registrera varan manuellt i Matsmart.';p.style.whiteSpace='pre-wrap';addLog('Produktsökning: '+(name||'ingen träff'))}catch(e){p.textContent='Produktsökningen misslyckades: '+e.message;addLog('Produktsökning fel: '+e.message)}}
 $('start').onclick=startCamera;$('stop').onclick=()=>{stopCamera();status('Kameran stoppad.')};$('reset').onclick=()=>{stopCamera();reset();status('Test nollställt. Starta kameran när du är redo.')};$('lookup').onclick=lookup;$('copy').onclick=()=>navigator.clipboard.writeText(confirmed).then(()=>status('EAN-koden kopierad.','ok')).catch(()=>status('Kunde inte kopiera koden.','warn'));
-$('useManual').onclick=()=>{const code=normalized($('manual').value.trim());if(!validEAN(code)){status('Den manuella koden har fel längd eller kontrollsiffra.','warn');return}stopCamera();confirmed=code;confirmedAngle=angle;$('angle').textContent=angle||'Automatisk';$('result').textContent=code;$('validation').textContent='Manuellt angiven kod med giltig kontrollsiffra (inte kameraverifierad).';$('lookup').disabled=false;$('copy').disabled=false;status('Manuell EAN/UPC-kod godkänd.','ok');addLog('Manuell kod: '+code)};
+$('useManual').onclick=()=>{const code=normalized($('manual').value.trim());if(!validEAN(code)){status('Den manuella koden har fel längd eller kontrollsiffra.','warn');return}stopCamera();confirmed=code;confirmedAngle='manuell';$('angle').textContent='Manuell';$('result').textContent=code;$('validation').textContent='Manuellt angiven kod med giltig kontrollsiffra (inte kameraverifierad).';$('lookup').disabled=false;$('copy').disabled=false;status('Manuell EAN/UPC-kod godkänd.','ok');addLog('Manuell kod: '+code)};
 $('copyReport').onclick=async()=>{const report='Matsmart 0.3 Skannerlabbet\nMotor: '+$('engine').value+'\nFörsök: '+tries+'\nAvläsningar: '+hits+'\nBekräftad kod: '+(confirmed||'ingen')+'\nTid: '+$('elapsed').textContent+'\nRiktning vid bekräftelse: '+(confirmedAngle||'standard/manuell')+'\nRotationsförsök: '+rotationAttempts+'\nRotationsavläsningar: '+rotationHits+'\n'+log.join('\n');try{await navigator.clipboard.writeText(report);status('Testrapport kopierad.','ok')}catch(e){status('Kunde inte kopiera. Markera texten i diagnostikrutan.','warn')}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){stopCamera();status('Kameran stoppades när appen lades i bakgrunden.')}});addLog('Skannerlabbet redo. Ingen matförrådsdata läses eller ändras.');
 })();
