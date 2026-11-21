@@ -1,9 +1,1 @@
-Matsmart 0.3.3 – Skannerlabbet 360°
-
-Uppdatering: rotationsavkodningen använder nu en korrekt enkanalig gråskalebild i stället för felaktigt RGBA-byteformat. TRY_HARDER för rotationsläsaren och separat felräknare.
-
-Ersätt index.html och scanner-lab.js i det separata GitHub-repot matsmart-skannerlab. Ändra inte den ordinarie Matsmart-appen.
-
-Testa samma EAN i 0°, 90°, 180° och 270°. Kontrollera alltid siffrorna på förpackningen.
-
-Kamerafunktion behöver verifieras på en fysisk iPhone.
+Matsmart 0.3.4 – Skannerlabbet 360°\n\nByt index.html och scanner-lab.js i separat GitHub-repo matsmart-skannerlab.\n\nZXing läser videon som tidigare. Quagga2 är en oberoende avkodare som testar roterade stillbilder från samma kamerastream.\n\nOBS: Kräver internet för bibliotek från CDN. Testad med syntaxkontroll, ej med fysisk iPhone-kamera. Kontrollera alltid EAN mot förpackningen. Matförrådet påverkas inte.\n
