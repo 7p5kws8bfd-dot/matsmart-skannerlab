@@ -1,1 +1,7 @@
-Matsmart 0.3.5 – separat Skannerlabb.\nErsätt index.html och scanner-lab.js i GitHub-repot matsmart-skannerlab.\nZXing: 2 samstämmiga avläsningar. Quagga2: 3 samstämmiga inom 6 sekunder.\nOpen Food Facts söks automatiskt efter bekräftad kod. Kontrollera alltid EAN på förpackningen.\nOrdinarie Matsmart påverkas inte.\n
+Matsmart 0.3.6 – Skannerlabbet 360°
+
+Ersätt index.html och scanner-lab.js i det separata GitHub-projektet matsmart-skannerlab.
+
+Två samstämmiga avläsningar inom 12 sekunder ger en KANDIDAT, inte en automatisk bekräftelse. Jämför alla siffror mot förpackningen och välj Stämmer eller Fel kod. Därefter hämtas produktuppgifter från Open Food Facts.
+
+Testversion: inga varor sparas. Ordinarie Matsmart påverkas inte.
