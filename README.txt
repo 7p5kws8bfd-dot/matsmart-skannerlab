@@ -1,15 +1,9 @@
-Matsmart 0.3.2 – Skannerlabbet 360°
+Matsmart 0.3.3 – Skannerlabbet 360°
 
-Separat testapp. Ändrar inga uppgifter i ordinarie Matsmart.
+Uppdatering: rotationsavkodningen använder nu en korrekt enkanalig gråskalebild i stället för felaktigt RGBA-byteformat. TRY_HARDER för rotationsläsaren och separat felräknare.
 
-Ändringar:
-- Kvadratisk synlig skanningsram och kameravy utan beskärning (object-fit:contain).
-- Rotationsassistans testar 90°/270° oftare, och även 180°.
-- Högre upplösning i rotationsanalysen.
-- Rättat fel vid manuell EAN-inmatning.
+Ersätt index.html och scanner-lab.js i det separata GitHub-repot matsmart-skannerlab. Ändra inte den ordinarie Matsmart-appen.
 
-Publicering: Ersätt index.html och scanner-lab.js i GitHub-projektet matsmart-skannerlab. GitHub Pages publicerar ändringarna. Uppdatera Safari-sidan. Kontrollera att rubriken visar 0.3.2.
+Testa samma EAN i 0°, 90°, 180° och 270°. Kontrollera alltid siffrorna på förpackningen.
 
-Testa samma förpackning i 0°, 90°, 180°, 270° och diagonalt. Kopiera testrapporten efter varje test.
-
-OBS: Kvadratisk ram är en visuell guide, inte en begränsning av ZXing:s sökområde. Rotation och prestanda måste verifieras på iPhone.
+Kamerafunktion behöver verifieras på en fysisk iPhone.
