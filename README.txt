@@ -1,17 +1,1 @@
-Matsmart 0.3 – Skannerlabbet (separat test)
-
-VIKTIGT: Detta är INTE en uppdatering av Matsmart 0.2.4.
-Ladda INTE upp filerna i ditt befintliga matsmart-test-repo om du vill behålla 0.2.4 orörd.
-
-Publicera separat:
-1. Skapa ett nytt PUBLIC GitHub-repo, exempelvis matsmart-skannerlab.
-2. Packa upp ZIP och ladda upp index.html och scanner-lab.js i repots rot.
-3. Settings > Pages > Deploy from a branch > main > /(root) > Save.
-4. Öppna https://DITT-ANVANDARNAMN.github.io/matsmart-skannerlab/
-
-Testmiljön sparar inga matvaror och ändrar inte det befintliga matförrådet.
-Kräver HTTPS, kameratillstånd och internet för ZXing och Open Food Facts.
-Stöder ZXing och, där webbläsaren stöder det, native BarcodeDetector.
-Giltig kontrollsiffra och två överensstämmande avläsningar krävs.
-
-Detta är en testversion. Kameraresultat har inte kunnat verifieras på fysisk iPhone.
+Matsmart 0.3.1 – Skannerlabbet 360°\n\nSeparat testapp. Ändrar inga uppgifter i Matsmart 0.2.4.\n\nPublicera genom att ersätta index.html och scanner-lab.js i GitHub-repot matsmart-skannerlab. Vänta på GitHub Pages-publicering och uppdatera sidan i Safari.\n\nZXing läser normalt från kameran och testar dessutom roterade bildrutor (90, 180 och 270 grader). Rotationsstödet kan påverka prestanda och kräver praktiska tester. Det är inte en garanti för alla fysiska kameravinklar.\n\nTesta samma EAN-kod i 0°, 90°, 180°, 270° och 45°. Kontrollera siffrorna på förpackningen och kopiera diagnostiken.\n\nOpen Food Facts nås via Sök produkt efter godkänd avläsning.\n
