@@ -5,8 +5,31 @@ const addLog=(msg)=>{log.push(new Date().toLocaleTimeString('sv-SE')+' '+msg);lo
 const status=(msg,type='')=>{$('status').textContent=msg;$('status').className='status '+type};
 function validEAN(s){if(!/^\d{8}$|^\d{12}$|^\d{13}$/.test(s))return false;let sum=0;for(let i=s.length-2,w=3;i>=0;i--,w=w===3?1:3)sum+=Number(s[i])*w;return (10-sum%10)%10===Number(s.at(-1))}
 function normalized(s){const digits=String(s||'').replace(/\D/g,'');return digits.length===14&&digits[0]==='0'?digits.slice(1):digits}
-function reset(){rotationAttempts=0;rotationHits=0;rotationErrors=0;quaggaFailures=0;confirmedAngle='';$('rotationAttempts').textContent='0';$('rotationHits').textContent='0';$('rotationErrors').textContent='0';$('quaggaStatus').textContent=quaggaStatus;$('angle').textContent='–';tries=0;hits=0;seen.clear();confirmed='';startTime=0;$('attempts').textContent='0';$('candidates').textContent='0';$('elapsed').textContent='–';$('result').textContent='Ingen kod ännu';$('validation').textContent='Väntar på giltig och bekräftad kod.';$('lookup').disabled=true;$('copy').disabled=true;$('product').classList.add('hidden');addLog('Testvärden nollställda')}
-function onCandidate(value,source,angle=""){if(!running)return;const code=normalized(value);hits++;$('candidates').textContent=String(hits);if(!validEAN(code)){if(hits<=6)addLog('Ogiltig kontrollsiffra eller längd: '+code);return}const n=(seen.get(code)||0)+1;seen.set(code,n);if(n===1){status('Möjlig kod '+code+' – väntar på en andra avläsning…');addLog('Första giltiga avläsning: '+code+' ('+source+')');return}if(confirmed)return;confirmed=code;confirmedAngle=angle;$('angle').textContent=angle||'Automatisk';$('result').textContent=code;$('validation').textContent='EAN/UPC-kontrollsiffran stämmer. Samma kod avläst minst två gånger.';$('lookup').disabled=false;$('copy').disabled=false;$('elapsed').textContent=((performance.now()-startTime)/1000).toFixed(1)+' s';status('Bekräftad streckkod: '+code+'. Kontrollera siffrorna på förpackningen.','ok');addLog('BEKRÄFTAD: '+code+' efter '+$('elapsed').textContent+' · riktning: '+(angle||'standard'));stopCamera()}
+function reset(){rotationAttempts=0;rotationHits=0;rotationErrors=0;quaggaFailures=0;confirmedAngle='';$('rotationAttempts').textContent='0';$('rotationHits').textContent='0';$('rotationErrors').textContent='0';$('quaggaStatus').textContent=quaggaStatus;$('angle').textContent='–';tries=0;hits=0;seen.clear();confirmed='';startTime=0;$('attempts').textContent='0';$('candidates').textContent='0';$('elapsed').textContent='–';$('result').textContent='Ingen kod ännu';$('validation').textContent='Väntar på giltig och bekräftad kod.';$('lookup').disabled=true;$('copy').disabled=true;$('product').classList.add('hidden');$('product').replaceChildren();addLog('Testvärden nollställda')}
+function onCandidate(value,source,angle=""){
+ if(!running||confirmed)return;
+ const code=normalized(value);hits++;$('candidates').textContent=String(hits);
+ if(!validEAN(code)){if(hits<=6)addLog('Ogiltig kontrollsiffra eller längd: '+code);return}
+ const now=performance.now(),isQuagga=source==='Quagga2';
+ // Quagga2 kan ibland ge falska, men matematiskt giltiga, koder.
+ // Tre samstämmiga Quagga-avläsningar inom sex sekunder krävs.
+ // ZXing/native kräver två; resultaten från olika motorer blandas inte.
+ const key=source+':'+code,prev=(seen.get(key)||[]).filter(t=>now-t<6000);
+ if(!prev.length||now-prev[prev.length-1]>=180)prev.push(now);
+ seen.set(key,prev);
+ const required=isQuagga?3:2;
+ if(prev.length===1)addLog('Första giltiga avläsning: '+code+' ('+source+' '+angle+')');
+ status('Möjlig kod '+code+' ('+prev.length+'/'+required+') – kontroll pågår…');
+ if(prev.length<required)return;
+ confirmed=code;confirmedAngle=angle||'standard';$('angle').textContent=confirmedAngle;
+ $('result').textContent=code;
+ $('validation').textContent='Kontrollsiffran är giltig och '+required+' avläsningar överensstämmer ('+source+'). Kontrollera ändå siffrorna på förpackningen innan användning.';
+ $('lookup').disabled=false;$('copy').disabled=false;
+ $('elapsed').textContent=((performance.now()-startTime)/1000).toFixed(1)+' s';
+ status('Kod bekräftad: '+code+'. Kontrollera mot förpackningen.','ok');
+ addLog('BEKRÄFTAD: '+code+' efter '+$('elapsed').textContent+' · '+source+' · riktning: '+confirmedAngle);
+ stopCamera();lookup();
+}
 function loadZXing(){return new Promise((resolve,reject)=>{if(window.ZXing?.BrowserMultiFormatReader)return resolve();const urls=['https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js','https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js'];let i=0;function next(){if(i===urls.length)return reject(Error('Kunde inte ladda ZXing. Kontrollera internetanslutningen.'));const script=document.createElement('script');script.src=urls[i++];script.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve():next();script.onerror=next;document.head.append(script)}next()})}
 function stopCamera(){running=false;token++;if(rotationTimer){clearTimeout(rotationTimer);rotationTimer=null}if(interval){clearInterval(interval);interval=null}try{controls?.stop()}catch{}controls=null;try{reader?.reset()}catch{}reader=null;try{stream?.getTracks().forEach(t=>t.stop())}catch{}stream=null;const v=$('video');try{v.pause()}catch{}if(v.srcObject){try{v.srcObject.getTracks().forEach(t=>t.stop())}catch{}v.srcObject=null}$('start').disabled=false;$('stop').disabled=true}
 // Alternativ motor: Quagga2 avkodar stillbilder från den redan aktiva kameran.
@@ -56,9 +79,28 @@ try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Kamera-API saknas. Öp
 }else{await loadZXing();if(myToken!==token)return;const hints=new Map();hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A]);reader=new ZXing.BrowserMultiFormatReader(hints,180);controls=await reader.decodeFromConstraints({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}},$('video'),(result,error)=>{if(myToken!==token||!running)return;tries++;$('attempts').textContent=String(tries);if(result)onCandidate(result.getText(),'ZXing');else if(error&&tries===1)addLog('Avkodning pågår: '+(error.name||'inget resultat'))});if(myToken!==token){try{controls.stop()}catch{}return}addLog('ZXing kameran startad. Laddar Quagga2 för 90°/270°…');loadQuagga().then(()=>{if(myToken===token&&running){addLog('Quagga2 rotationsmotor redo (90°/270°/180°).');startRotationAssist(myToken)}}).catch(e=>{if(myToken===token&&running)addLog('Quagga2 ej tillgänglig: '+e.message)});}
 if(myToken===token&&running)status('Kameran är igång. Prova att vrida streckkoden i olika riktningar. Håll den skarp och synlig.');
 }catch(e){if(myToken===token){addLog('FEL: '+(e.message||e));stopCamera();status('Kunde inte starta: '+(e.message||e),'warn')}}}
-async function lookup(){const code=confirmed;if(!validEAN(code))return;const p=$('product');p.classList.remove('hidden');p.textContent='Söker produkt i Open Food Facts…';try{const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);let r;try{r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json?fields=product_name,product_name_sv,brands,quantity',{signal:ctl.signal})}finally{clearTimeout(timer)}if(!r.ok)throw Error('HTTP '+r.status);const data=await r.json(),product=data.product||{},name=(product.product_name_sv||product.product_name||'').trim();p.textContent=name?'Produkt: '+name+'\nVarumärke: '+(product.brands||'–')+'\nMängd: '+(product.quantity||'–'):'Ingen produkt hittades i Open Food Facts för '+code+'. Du kan ändå registrera varan manuellt i Matsmart.';p.style.whiteSpace='pre-wrap';addLog('Produktsökning: '+(name||'ingen träff'))}catch(e){p.textContent='Produktsökningen misslyckades: '+e.message;addLog('Produktsökning fel: '+e.message)}}
+async function lookup(){
+ const code=confirmed;if(!validEAN(code))return;
+ const p=$('product');p.classList.remove('hidden');p.replaceChildren();p.textContent='Söker produkt i Open Food Facts…';
+ try{
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);let r;
+  try{r=await fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json?fields=product_name,product_name_sv,brands,quantity,image_front_small_url',{signal:ctl.signal})}finally{clearTimeout(timer)}
+  if(!r.ok)throw Error('HTTP '+r.status);
+  const data=await r.json();if(confirmed!==code)return;
+  const product=data.product||{},name=String(product.product_name_sv||product.product_name||'').trim();
+  p.replaceChildren();
+  if(name){
+   const title=document.createElement('strong');title.textContent='Produkt: '+name;p.append(title);
+   const info=document.createElement('p');info.textContent='Varumärke: '+(product.brands||'–')+' · Mängd: '+(product.quantity||'–');p.append(info);
+   if(typeof product.image_front_small_url==='string'&&/^https:\/\//.test(product.image_front_small_url)){
+    const img=document.createElement('img');img.src=product.image_front_small_url;img.alt='Produktbild från Open Food Facts';img.loading='lazy';img.style.cssText='max-width:110px;max-height:130px;object-fit:contain;display:block;margin-top:8px';p.append(img);
+   }
+  }else p.textContent='Ingen produkt hittades för '+code+'. Du kan fortfarande ange varan manuellt i Matsmart.';
+  addLog('Produktsökning: '+(name||'ingen träff'));
+ }catch(e){if(confirmed===code){p.textContent='Produktsökningen misslyckades: '+e.message;addLog('Produktsökning fel: '+e.message)}}
+}
 $('start').onclick=startCamera;$('stop').onclick=()=>{stopCamera();status('Kameran stoppad.')};$('reset').onclick=()=>{stopCamera();reset();status('Test nollställt. Starta kameran när du är redo.')};$('lookup').onclick=lookup;$('copy').onclick=()=>navigator.clipboard.writeText(confirmed).then(()=>status('EAN-koden kopierad.','ok')).catch(()=>status('Kunde inte kopiera koden.','warn'));
 $('useManual').onclick=()=>{const code=normalized($('manual').value.trim());if(!validEAN(code)){status('Den manuella koden har fel längd eller kontrollsiffra.','warn');return}stopCamera();confirmed=code;confirmedAngle='manuell';$('angle').textContent='Manuell';$('result').textContent=code;$('validation').textContent='Manuellt angiven kod med giltig kontrollsiffra (inte kameraverifierad).';$('lookup').disabled=false;$('copy').disabled=false;status('Manuell EAN/UPC-kod godkänd.','ok');addLog('Manuell kod: '+code)};
-$('copyReport').onclick=async()=>{const report='Matsmart 0.3.4 Skannerlabbet\nMotor: '+$('engine').value+'\nFörsök: '+tries+'\nAvläsningar: '+hits+'\nBekräftad kod: '+(confirmed||'ingen')+'\nTid: '+$('elapsed').textContent+'\nRiktning vid bekräftelse: '+(confirmedAngle||'standard/manuell')+'\nRotationsförsök: '+rotationAttempts+'\nRotationsavläsningar: '+rotationHits+'\nRotationsfel: '+rotationErrors+'\nQuagga2: '+quaggaStatus+'\n'+log.join('\n');try{await navigator.clipboard.writeText(report);status('Testrapport kopierad.','ok')}catch(e){status('Kunde inte kopiera. Markera texten i diagnostikrutan.','warn')}};
+$('copyReport').onclick=async()=>{const report='Matsmart 0.3.5 Skannerlabbet\nMotor: '+$('engine').value+'\nFörsök: '+tries+'\nAvläsningar: '+hits+'\nBekräftad kod: '+(confirmed||'ingen')+'\nTid: '+$('elapsed').textContent+'\nRiktning vid bekräftelse: '+(confirmedAngle||'standard/manuell')+'\nRotationsförsök: '+rotationAttempts+'\nRotationsavläsningar: '+rotationHits+'\nRotationsfel: '+rotationErrors+'\nQuagga2: '+quaggaStatus+'\nBekräftelseregel: ZXing 2, Quagga2 3 samstämmiga inom 6 s'+'\n'+log.join('\n');try{await navigator.clipboard.writeText(report);status('Testrapport kopierad.','ok')}catch(e){status('Kunde inte kopiera. Markera texten i diagnostikrutan.','warn')}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){stopCamera();status('Kameran stoppades när appen lades i bakgrunden.')}});addLog('Skannerlabbet redo. Ingen matförrådsdata läses eller ändras.');
 })();
