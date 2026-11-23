@@ -1,7 +1,1 @@
-Matsmart 0.3.6 – Skannerlabbet 360°
-
-Ersätt index.html och scanner-lab.js i det separata GitHub-projektet matsmart-skannerlab.
-
-Två samstämmiga avläsningar inom 12 sekunder ger en KANDIDAT, inte en automatisk bekräftelse. Jämför alla siffror mot förpackningen och välj Stämmer eller Fel kod. Därefter hämtas produktuppgifter från Open Food Facts.
-
-Testversion: inga varor sparas. Ordinarie Matsmart påverkas inte.
+Matsmart 0.3.7 Skannerlabbet 360°\n\nLadda upp index.html och scanner-lab.js i roten av det separata GitHub-projektet matsmart-skannerlab. Ersätt tidigare filer.\n\nNyhet: oberoende avläsningar, tydligt märkt osäker kodkandidat efter 4 sekunder om endast en giltig kod hittas, alltid manuell kontroll. Inga matförrådsdata läses eller ändras.\n\nTesta i Safari på iPhone med liggande och stående streckkod. Kontrollera alltid siffrorna innan bekräftelse.\n

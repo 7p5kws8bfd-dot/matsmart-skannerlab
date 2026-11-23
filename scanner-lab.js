@@ -1,33 +1,54 @@
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
-let reader=null,controls=null,stream=null,running=false,token=0,tries=0,hits=0,startTime=0,confirmed='',pending='',pendingSource='',pendingAngle='',seen=new Map(),log=[],busy=false,interval=null,rotationTimer=null,rotationBusy=false,rotationAttempts=0,rotationHits=0,rotationErrors=0,confirmedAngle="",quaggaReady=false,quaggaFailures=0,quaggaStatus="ej laddad";
+let reader=null,controls=null,stream=null,running=false,token=0,tries=0,hits=0,startTime=0,confirmed='',pending='',pendingSource='',pendingAngle='',seen=new Map(),log=[],busy=false,interval=null,rotationTimer=null,rotationBusy=false,rotationAttempts=0,rotationHits=0,rotationErrors=0,confirmedAngle="",quaggaReady=false,quaggaFailures=0,quaggaStatus="ej laddad",frameSeq=0,candidateTimer=null,firstValidAt=0;
 const addLog=(msg)=>{log.push(new Date().toLocaleTimeString('sv-SE')+' '+msg);log=log.slice(-35);$('diagnostics').textContent=log.join('\n')};
 const status=(msg,type='')=>{$('status').textContent=msg;$('status').className='status '+type};
 function validEAN(s){if(!/^\d{8}$|^\d{12}$|^\d{13}$/.test(s))return false;let sum=0;for(let i=s.length-2,w=3;i>=0;i--,w=w===3?1:3)sum+=Number(s[i])*w;return (10-sum%10)%10===Number(s.at(-1))}
 function normalized(s){const digits=String(s||'').replace(/\D/g,'');return digits.length===14&&digits[0]==='0'?digits.slice(1):digits}
-function reset(){rotationAttempts=0;rotationHits=0;rotationErrors=0;quaggaFailures=0;confirmedAngle='';$('rotationAttempts').textContent='0';$('rotationHits').textContent='0';$('rotationErrors').textContent='0';$('quaggaStatus').textContent=quaggaStatus;$('angle').textContent='–';tries=0;hits=0;seen.clear();confirmed='';pending='';pendingSource='';pendingAngle='';$('confirmCode').disabled=true;$('rejectCode').disabled=true;startTime=0;$('attempts').textContent='0';$('candidates').textContent='0';$('elapsed').textContent='–';$('result').textContent='Ingen kod ännu';$('validation').textContent='Väntar på giltig och bekräftad kod.';$('lookup').disabled=true;$('copy').disabled=true;$('product').classList.add('hidden');$('product').replaceChildren();addLog('Testvärden nollställda')}
-// 0.3.6: Två samstämmiga giltiga EAN/UPC inom 12 s ger en KANDIDAT,
-// aldrig en automatiskt godkänd kod. Användaren kontrollerar siffrorna.
-// Tydliga felavläsningar kan fortfarande ge samma felkod två gånger.
-function onCandidate(value,source,angle=""){
+function reset(){if(candidateTimer){clearTimeout(candidateTimer);candidateTimer=null}firstValidAt=0;frameSeq=0;rotationAttempts=0;rotationHits=0;rotationErrors=0;quaggaFailures=0;confirmedAngle='';$('rotationAttempts').textContent='0';$('rotationHits').textContent='0';$('rotationErrors').textContent='0';$('quaggaStatus').textContent=quaggaStatus;$('angle').textContent='–';tries=0;hits=0;seen.clear();confirmed='';pending='';pendingSource='';pendingAngle='';$('confirmCode').disabled=true;$('rejectCode').disabled=true;startTime=0;$('attempts').textContent='0';$('candidates').textContent='0';$('elapsed').textContent='–';$('result').textContent='Ingen kod ännu';$('validation').textContent='Väntar på giltig och bekräftad kod.';$('lookup').disabled=true;$('copy').disabled=true;$('product').classList.add('hidden');$('product').replaceChildren();addLog('Testvärden nollställda')}
+// 0.3.7: En avläsning är ett förslag, aldrig ett godkännande.
+// Samma kamerabild får inte räknas två gånger, även om flera rotationer träffar.
+// Efter 4 s visas den vanligaste giltiga koden som OSÄKER kandidat om ingen
+// oberoende dubbelträff har kommit. Användaren måste kontrollera varje siffra.
+function presentCandidate(code,source,angle,confidence){
+ if(!running||confirmed||pending)return;
+ pending=code;pendingSource=source;pendingAngle=angle||'standard';
+ if(candidateTimer){clearTimeout(candidateTimer);candidateTimer=null}
+ $('angle').textContent=pendingAngle;$('result').textContent=code;
+ $('validation').textContent=(confidence==='double'?'Koden har lästs på två separata bildtillfällen. ':'Koden har bara lästs en gång och är OSÄKER. ')+
+  'Jämför samtliga siffror mot streckkoden på förpackningen. Tryck endast Stämmer om alla siffror är identiska. Ingen kod registreras automatiskt.';
+ $('elapsed').textContent=((performance.now()-startTime)/1000).toFixed(1)+' s';
+ $('confirmCode').disabled=false;$('rejectCode').disabled=false;
+ status((confidence==='double'?'Kodkandidat: ':'OSÄKER kodkandidat: ')+code+' – kontrollera ALLA siffror.','warn');
+ addLog('KANDIDAT ('+confidence+'): '+code+' efter '+$('elapsed').textContent+' · '+source+' · riktning: '+pendingAngle+' · inväntar manuell kontroll');
+ stopCamera();
+}
+function offerBestCandidate(){
+ candidateTimer=null;
+ if(!running||pending||confirmed)return;
+ const candidates=[...seen.entries()].map(([code,events])=>({code,events})).filter(x=>x.events.length);
+ candidates.sort((a,b)=>b.events.length-a.events.length||b.events[b.events.length-1].time-a.events[a.events.length-1].time);
+ if(candidates.length){const best=candidates[0];const last=best.events.at(-1);presentCandidate(best.code,last.source,last.angle,'single')}
+}
+function onCandidate(value,source,angle='',frameId=null){
  if(!running||confirmed||pending)return;
  const code=normalized(value);hits++;$('candidates').textContent=String(hits);
  if(!validEAN(code)){if(hits<=6)addLog('Ogiltig kontrollsiffra eller längd: '+code);return}
- const now=performance.now(),key=source+':'+code;
- const prev=(seen.get(key)||[]).filter(t=>now-t<=12000);
- if(!prev.length||now-prev[prev.length-1]>=350)prev.push(now);
- seen.set(key,prev);
- if(prev.length===1)addLog('Första giltiga avläsning: '+code+' ('+source+' '+angle+')');
- status('Möjlig kod '+code+' ('+prev.length+'/2) – kontrollerar…');
- if(prev.length<2)return;
- pending=code;pendingSource=source;pendingAngle=angle||'standard';
- $('angle').textContent=pendingAngle;$('result').textContent=code;
- $('validation').textContent='Två avläsningar överensstämmer ('+source+'). Jämför ALLA siffror med förpackningen och välj Stämmer eller Fel kod. Ingen kod har godkänts ännu.';
- $('elapsed').textContent=((performance.now()-startTime)/1000).toFixed(1)+' s';
- $('confirmCode').disabled=false;$('rejectCode').disabled=false;
- status('Möjlig EAN: '+code+'. Kontrollera siffrorna på förpackningen.','warn');
- addLog('KANDIDAT: '+code+' efter '+$('elapsed').textContent+' · '+source+' · riktning: '+pendingAngle+' · inväntar manuell kontroll');
- stopCamera();
+ const now=performance.now();
+ const prev=(seen.get(code)||[]).filter(x=>now-x.time<=12000);
+ // Quagga2-resultat från samma fångade bild räknas bara en gång.
+ const independent=!prev.length||prev.every(x=>frameId===null||x.frameId!==frameId);
+ if(independent)prev.push({time:now,source,angle,frameId});
+ seen.set(code,prev);
+ if(prev.length===1){
+  addLog('Första giltiga avläsning: '+code+' ('+source+' '+angle+')');
+  if(!candidateTimer){firstValidAt=now;candidateTimer=setTimeout(offerBestCandidate,4000)}
+ }
+ status('Möjliga EAN-koder hittade – söker oberoende bekräftelse…');
+ // Kräver två olika fångsttillfällen med minst 350 ms mellan.
+ if(prev.length>=2&&prev[prev.length-1].time-prev[0].time>=350){
+  presentCandidate(code,source,angle,'double');
+ }
 }
 function confirmPending(){
  if(!pending)return;
@@ -47,7 +68,7 @@ function rejectPending(){
  status('Koden avvisades. Starta kameran igen.','warn');
 }
 function loadZXing(){return new Promise((resolve,reject)=>{if(window.ZXing?.BrowserMultiFormatReader)return resolve();const urls=['https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js','https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js'];let i=0;function next(){if(i===urls.length)return reject(Error('Kunde inte ladda ZXing. Kontrollera internetanslutningen.'));const script=document.createElement('script');script.src=urls[i++];script.onload=()=>window.ZXing?.BrowserMultiFormatReader?resolve():next();script.onerror=next;document.head.append(script)}next()})}
-function stopCamera(){running=false;token++;if(rotationTimer){clearTimeout(rotationTimer);rotationTimer=null}if(interval){clearInterval(interval);interval=null}try{controls?.stop()}catch{}controls=null;try{reader?.reset()}catch{}reader=null;try{stream?.getTracks().forEach(t=>t.stop())}catch{}stream=null;const v=$('video');try{v.pause()}catch{}if(v.srcObject){try{v.srcObject.getTracks().forEach(t=>t.stop())}catch{}v.srcObject=null}$('start').disabled=false;$('stop').disabled=true}
+function stopCamera(){running=false;token++;if(rotationTimer){clearTimeout(rotationTimer);rotationTimer=null}if(candidateTimer){clearTimeout(candidateTimer);candidateTimer=null}if(interval){clearInterval(interval);interval=null}try{controls?.stop()}catch{}controls=null;try{reader?.reset()}catch{}reader=null;try{stream?.getTracks().forEach(t=>t.stop())}catch{}stream=null;const v=$('video');try{v.pause()}catch{}if(v.srcObject){try{v.srcObject.getTracks().forEach(t=>t.stop())}catch{}v.srcObject=null}$('start').disabled=false;$('stop').disabled=true}
 // Alternativ motor: Quagga2 avkodar stillbilder från den redan aktiva kameran.
 // Vi använder samma videoström som ZXing, utan att Quagga öppnar en andra kamera.
 function loadQuagga(){return new Promise((resolve,reject)=>{
@@ -64,7 +85,7 @@ function startRotationAssist(myToken){
   if(myToken!==token||!running)return;
   if(rotationBusy||video.readyState<2||!video.videoWidth||!video.videoHeight){rotationTimer=setTimeout(step,300);return}
   rotationBusy=true;
-  const angle=[90,270,90,270,180][idx++%5];
+  const angle=[90,270,90,270,180][idx++%5],captureId=++frameSeq;
   try{
    const w=video.videoWidth,h=video.videoHeight,scale=Math.min(1,1000/Math.max(w,h));
    const sw=Math.round(w*scale),sh=Math.round(h*scale);
@@ -82,7 +103,7 @@ function startRotationAssist(myToken){
    const watchdog=setTimeout(()=>{quaggaFailures++;rotationErrors++;$('rotationErrors').textContent=String(rotationErrors);if(quaggaFailures<=2)addLog('Quagga2 svarade inte inom 4 sekunder');finish()},4000);
    try{window.Quagga.decodeSingle({src:canvas.toDataURL('image/jpeg',0.85),numOfWorkers:0,locate:true,inputStream:{size:Math.max(canvas.width,canvas.height),singleChannel:false},decoder:{readers:['ean_reader','ean_8_reader','upc_reader']}},result=>{
     clearTimeout(watchdog);
-    if(myToken===token&&running&&result?.codeResult?.code){rotationHits++;$('rotationHits').textContent=String(rotationHits);onCandidate(result.codeResult.code,'Quagga2',angle+'°')}
+    if(myToken===token&&running&&result?.codeResult?.code){rotationHits++;$('rotationHits').textContent=String(rotationHits);onCandidate(result.codeResult.code,'Quagga2',angle+'°',captureId)}
     finish();
    })}catch(e){clearTimeout(watchdog);throw e}
   }catch(e){rotationErrors++;$('rotationErrors').textContent=String(rotationErrors);if(rotationErrors<=4)addLog('Quagga2 rotationsfel: '+(e.message||e));rotationBusy=false;rotationTimer=setTimeout(step,400)}
@@ -117,6 +138,6 @@ async function lookup(){
 }
 $('confirmCode').onclick=confirmPending;$('rejectCode').onclick=rejectPending;$('start').onclick=startCamera;$('stop').onclick=()=>{stopCamera();status('Kameran stoppad.')};$('reset').onclick=()=>{stopCamera();reset();status('Test nollställt. Starta kameran när du är redo.')};$('lookup').onclick=lookup;$('copy').onclick=()=>navigator.clipboard.writeText(confirmed).then(()=>status('EAN-koden kopierad.','ok')).catch(()=>status('Kunde inte kopiera koden.','warn'));
 $('useManual').onclick=()=>{const code=normalized($('manual').value.trim());if(!validEAN(code)){status('Den manuella koden har fel längd eller kontrollsiffra.','warn');return}stopCamera();pending='';$('confirmCode').disabled=true;$('rejectCode').disabled=true;confirmed=code;confirmedAngle='manuell';$('angle').textContent='Manuell';$('result').textContent=code;$('validation').textContent='Manuellt angiven kod med giltig kontrollsiffra (inte kameraverifierad).';$('lookup').disabled=false;$('copy').disabled=false;status('Manuell EAN/UPC-kod godkänd.','ok');addLog('Manuell kod: '+code)};
-$('copyReport').onclick=async()=>{const report='Matsmart 0.3.6 Skannerlabbet\nMotor: '+$('engine').value+'\nFörsök: '+tries+'\nAvläsningar: '+hits+'\nBekräftad kod: '+(confirmed||'ingen')+'\nKandidat väntar på användarkontroll: '+(pending||'ingen')+'\nTid: '+$('elapsed').textContent+'\nRiktning vid bekräftelse: '+(confirmedAngle||'standard/manuell')+'\nRotationsförsök: '+rotationAttempts+'\nRotationsavläsningar: '+rotationHits+'\nRotationsfel: '+rotationErrors+'\nQuagga2: '+quaggaStatus+'\nBekräftelseregel: 2 samstämmiga inom 12 s (minst 350 ms mellan), därefter användarbekräftelse'+'\n'+log.join('\n');try{await navigator.clipboard.writeText(report);status('Testrapport kopierad.','ok')}catch(e){status('Kunde inte kopiera. Markera texten i diagnostikrutan.','warn')}};
+$('copyReport').onclick=async()=>{const report='Matsmart 0.3.7 Skannerlabbet\nMotor: '+$('engine').value+'\nFörsök: '+tries+'\nAvläsningar: '+hits+'\nBekräftad kod: '+(confirmed||'ingen')+'\nKandidat väntar på användarkontroll: '+(pending||'ingen')+'\nTid: '+$('elapsed').textContent+'\nRiktning vid bekräftelse: '+(confirmedAngle||'standard/manuell')+'\nRotationsförsök: '+rotationAttempts+'\nRotationsavläsningar: '+rotationHits+'\nRotationsfel: '+rotationErrors+'\nQuagga2: '+quaggaStatus+'\nBekräftelseregel: 2 oberoende avläsningar inom 12 s eller osäker kandidat efter 4 s, alltid användarbekräftelse'+'\n'+log.join('\n');try{await navigator.clipboard.writeText(report);status('Testrapport kopierad.','ok')}catch(e){status('Kunde inte kopiera. Markera texten i diagnostikrutan.','warn')}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){stopCamera();status('Kameran stoppades när appen lades i bakgrunden.')}});addLog('Skannerlabbet redo. Ingen matförrådsdata läses eller ändras.');
 })();
